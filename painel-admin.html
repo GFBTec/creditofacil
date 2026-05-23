@@ -18,6 +18,16 @@
             appearance: none;
         }
 
+        input[type="date"] {
+            color-scheme: dark;
+        }
+
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            cursor: pointer;
+            filter: invert(65%) sepia(60%) saturate(520%) hue-rotate(110deg) brightness(92%);
+            opacity: 0.8;
+        }
+
         .solicitacoes-grid {
             display: grid;
             gap: 1rem;
@@ -246,6 +256,10 @@
 
         const STORAGE_KEY = 'microcredito_solicitacoes';
         const FINANCEIRO_KEY = 'microcredito_financeiro';
+        const TAXA_JUROS_FIXO = 0.12;
+        const TAXA_MULTA_ATRASO = 0.02;
+        const TAXA_JUROS_ATRASO_DIA = 0.00033;
+        const MS_POR_DIA = 24 * 60 * 60 * 1000;
         const listaEl = document.getElementById('lista-solicitacoes');
         const estadoVazioEl = document.getElementById('estado-vazio');
         const buscaEl = document.getElementById('busca');
@@ -380,6 +394,35 @@
             return new Intl.DateTimeFormat('pt-BR').format(new Date(ano, mes - 1, dia));
         }
 
+        function formatarDataPagamentoRegistrado(dataISO) {
+            if (!dataISO) return 'Nao informado';
+            const data = new Date(dataISO);
+            if (Number.isNaN(data.getTime())) return 'Nao informado';
+            return new Intl.DateTimeFormat('pt-BR').format(data);
+        }
+
+        function formatarDataInputPagamento(dataISO) {
+            if (!dataISO) return '';
+            const data = new Date(dataISO);
+            if (Number.isNaN(data.getTime())) return '';
+            const ano = data.getFullYear();
+            const mes = String(data.getMonth() + 1).padStart(2, '0');
+            const dia = String(data.getDate()).padStart(2, '0');
+            return `${ano}-${mes}-${dia}`;
+        }
+
+        function criarDataPagamentoManual(valor) {
+            const [ano, mes, dia] = String(valor || '').split('-').map(Number);
+            if (!ano || !mes || !dia) return null;
+
+            const data = new Date(ano, mes - 1, dia, 12, 0, 0, 0);
+            if (data.getFullYear() !== ano || data.getMonth() !== mes - 1 || data.getDate() !== dia) {
+                return null;
+            }
+
+            return data;
+        }
+
         function normalizarTextoHistorico(valor) {
             return String(valor || '')
                 .normalize('NFD')
@@ -404,6 +447,83 @@
             const [ano, mes, dia] = data.split('-').map(Number);
             if (!ano || !mes || !dia) return null;
             return new Date(ano, mes - 1, dia, 23, 59, 59, 999);
+        }
+
+        function dataSemHorario(data) {
+            return new Date(data.getFullYear(), data.getMonth(), data.getDate());
+        }
+
+        function diasDeAtraso(dataPagamento, dataReferencia = new Date()) {
+            const vencimento = parseDataPagamento(dataPagamento);
+            if (!vencimento || Number.isNaN(dataReferencia.getTime())) return 0;
+
+            const vencimentoDia = dataSemHorario(vencimento);
+            const referenciaDia = dataSemHorario(dataReferencia);
+            return Math.max(0, Math.floor((referenciaDia - vencimentoDia) / MS_POR_DIA));
+        }
+
+        function calcularValorAtualizado(item, dataReferenciaManual = null) {
+            const valorEmprestado = numeroMoeda(item.solicitante?.valor);
+            const valorComJuros = valorEmprestado * (1 + TAXA_JUROS_FIXO);
+            const referenciaManual = dataReferenciaManual instanceof Date && !Number.isNaN(dataReferenciaManual.getTime()) ? dataReferenciaManual : null;
+            const pagoEm = item.pagamento?.pagoEm ? new Date(item.pagamento.pagoEm) : null;
+            const dataReferencia = referenciaManual || (pagoEm && !Number.isNaN(pagoEm.getTime()) ? pagoEm : new Date());
+            const atrasoDias = diasDeAtraso(item.solicitante?.dataPagamento, dataReferencia);
+            const multaAtraso = atrasoDias > 0 ? valorComJuros * TAXA_MULTA_ATRASO : 0;
+            const jurosAtraso = atrasoDias > 0 ? valorComJuros * TAXA_JUROS_ATRASO_DIA * atrasoDias : 0;
+
+            return {
+                valorEmprestado,
+                valorComJuros,
+                valorAtualizado: valorComJuros + multaAtraso + jurosAtraso,
+                jurosFixo: valorComJuros - valorEmprestado,
+                multaAtraso,
+                jurosAtraso,
+                atrasoDias
+            };
+        }
+
+        function classeValorAtualizado(resumoJuros) {
+            return resumoJuros.atrasoDias > 0 ? 'text-amber-300' : 'text-emerald-300';
+        }
+
+        function textoDetalheJuros(resumoJuros) {
+            if (resumoJuros.atrasoDias <= 0) {
+                return `${formatarMoeda(resumoJuros.jurosFixo)} de juros fixos (12%)`;
+            }
+
+            return `${formatarMoeda(resumoJuros.jurosFixo)} de juros fixos (12%) + ${formatarMoeda(resumoJuros.multaAtraso)} de multa (2%) + ${formatarMoeda(resumoJuros.jurosAtraso)} de atraso (${resumoJuros.atrasoDias} dia${resumoJuros.atrasoDias > 1 ? 's' : ''})`;
+        }
+
+        function atualizarPreviaJurosPagamento(event) {
+            const campoData = event.target.closest('[data-payment-date]');
+            if (!campoData) return;
+
+            const areaPagamento = campoData.closest('[data-payment-scope]') || campoData.closest('article');
+            const id = areaPagamento?.querySelector('[data-action="payment"]')?.dataset.id;
+            const item = buscarSolicitacao(id);
+
+            if (!areaPagamento || !item) return;
+
+            const dataPagamento = criarDataPagamentoManual(campoData.value);
+            const resumoJuros = calcularValorAtualizado(item, dataPagamento);
+            const campoValor = areaPagamento.querySelector('[data-payment-value]');
+            const valorAtualizadoEl = areaPagamento.querySelector('[data-payment-updated]');
+            const detalheJurosEl = areaPagamento.querySelector('[data-payment-interest-detail]');
+
+            if (campoValor) {
+                campoValor.placeholder = `Valor atualizado: ${formatarMoeda(resumoJuros.valorAtualizado)}`;
+            }
+
+            if (valorAtualizadoEl) {
+                valorAtualizadoEl.textContent = formatarMoeda(resumoJuros.valorAtualizado);
+                valorAtualizadoEl.classList.remove('text-amber-300', 'text-emerald-300');
+                valorAtualizadoEl.classList.add(classeValorAtualizado(resumoJuros));
+            }
+
+            if (detalheJurosEl) {
+                detalheJurosEl.textContent = textoDetalheJuros(resumoJuros);
+            }
         }
 
         function pagamentoFoiCorreto(item) {
@@ -522,12 +642,15 @@
             solicitacoesFiltradas.forEach(item => {
                 const statusAtual = normalizarStatus(item.status);
                 const pagamentoRegistrado = Boolean(item.pagamento?.pago);
-                const valorEmprestado = numeroMoeda(item.solicitante?.valor);
+                const resumoJuros = calcularValorAtualizado(item);
+                const valorEmprestado = resumoJuros.valorEmprestado;
                 const valorPago = numeroMoeda(item.pagamento?.valorPago);
+                const dataPagamentoInput = formatarDataInputPagamento(item.pagamento?.pagoEm);
                 const ganhoSolicitacao = pagamentoRegistrado ? valorPago - valorEmprestado : 0;
                 const classeGanho = ganhoSolicitacao >= 0 ? 'text-emerald-300' : 'text-red-300';
                 const dadosMinimizados = cardsMinimizados.has(item.id);
                 const card = document.createElement('article');
+                card.dataset.paymentScope = '';
                 card.className = 'rounded-xl border border-zinc-800/80 bg-[#121212] p-5 md:p-6';
                 card.innerHTML = `
                     <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -614,27 +737,39 @@
                                         Pagamento do cliente
                                     </h3>
                                     <p class="text-sm ${pagamentoRegistrado ? 'text-emerald-300' : 'text-zinc-500'}">
-                                        ${pagamentoRegistrado ? `Pagamento registrado em ${formatarData(item.pagamento?.pagoEm)}` : 'Aguardando registro de pagamento'}
+                                        ${pagamentoRegistrado ? `Pagamento registrado em ${formatarDataPagamentoRegistrado(item.pagamento?.pagoEm)}` : 'Aguardando registro de pagamento'}
                                     </p>
                                 </div>
 
-                                <div class="grid gap-3 sm:grid-cols-[minmax(180px,1fr)_auto_auto]">
-                                    <input type="text" inputmode="decimal" data-payment-value value="${atributo(item.pagamento?.valorPago)}" placeholder="Quanto pagou" class="rounded-lg border border-zinc-800/80 bg-[#0a0a0a] px-3 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 outline-none transition-all focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50">
-                                    <button type="button" data-action="payment" data-id="${texto(item.id)}" class="inline-flex items-center justify-center gap-2 rounded-lg bg-[#10B981] px-3 py-2.5 text-sm font-semibold text-white hover:bg-[#059669] transition-colors">
+                                <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_minmax(155px,0.85fr)_auto_auto]">
+                                    <label class="grid gap-1">
+                                        <span class="text-xs font-semibold text-zinc-500">Valor pago</span>
+                                        <input type="text" inputmode="decimal" data-payment-value value="${atributo(item.pagamento?.valorPago)}" placeholder="${atributo('Valor atualizado: ' + formatarMoeda(resumoJuros.valorAtualizado))}" class="rounded-lg border border-zinc-800/80 bg-[#0a0a0a] px-3 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 outline-none transition-all focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50">
+                                    </label>
+                                    <label class="grid gap-1">
+                                        <span class="text-xs font-semibold text-zinc-500">Data do pagamento</span>
+                                        <input type="date" data-payment-date value="${atributo(dataPagamentoInput)}" class="rounded-lg border border-zinc-800/80 bg-[#0a0a0a] px-3 py-2.5 text-sm text-zinc-200 outline-none transition-all focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50">
+                                    </label>
+                                    <button type="button" data-action="payment" data-id="${texto(item.id)}" class="inline-flex items-center justify-center gap-2 self-end rounded-lg bg-[#10B981] px-3 py-2.5 text-sm font-semibold text-white hover:bg-[#059669] transition-colors">
                                         <i data-lucide="badge-dollar-sign" class="w-4 h-4"></i>
                                         Marcar pago
                                     </button>
-                                    <button type="button" data-action="clear-payment" data-id="${texto(item.id)}" class="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-700 px-3 py-2.5 text-sm font-semibold text-zinc-200 hover:border-red-500/40 hover:text-white transition-colors">
+                                    <button type="button" data-action="clear-payment" data-id="${texto(item.id)}" class="inline-flex items-center justify-center gap-2 self-end rounded-lg border border-zinc-700 px-3 py-2.5 text-sm font-semibold text-zinc-200 hover:border-red-500/40 hover:text-white transition-colors">
                                         <i data-lucide="x" class="w-4 h-4"></i>
                                         Limpar
                                     </button>
                                 </div>
                             </div>
 
-                            <dl class="mt-5 grid gap-3 text-sm md:grid-cols-3">
+                            <dl class="mt-5 grid gap-3 text-sm md:grid-cols-4">
                                 <div>
                                     <dt class="text-zinc-500">Valor emprestado</dt>
                                     <dd class="mt-1 font-semibold text-white">${formatarMoeda(valorEmprestado)}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-zinc-500">Valor atualizado</dt>
+                                    <dd data-payment-updated class="mt-1 font-semibold ${classeValorAtualizado(resumoJuros)}">${formatarMoeda(resumoJuros.valorAtualizado)}</dd>
+                                    <dd data-payment-interest-detail class="mt-1 text-xs text-zinc-500">${texto(textoDetalheJuros(resumoJuros))}</dd>
                                 </div>
                                 <div>
                                     <dt class="text-zinc-500">Valor pago</dt>
@@ -665,11 +800,7 @@
 
             solicitacoesFiltradas.forEach(item => {
                 const statusAtual = normalizarStatus(item.status);
-                const pagamentoRegistrado = Boolean(item.pagamento?.pago);
-                const valorEmprestado = numeroMoeda(item.solicitante?.valor);
-                const valorPago = numeroMoeda(item.pagamento?.valorPago);
-                const ganhoSolicitacao = pagamentoRegistrado ? valorPago - valorEmprestado : 0;
-                const classeGanho = ganhoSolicitacao >= 0 ? 'text-emerald-300' : 'text-red-300';
+                const resumoJuros = calcularValorAtualizado(item);
                 const card = document.createElement('button');
 
                 card.type = 'button';
@@ -698,8 +829,8 @@
                                     <dd class="mt-1 font-semibold text-zinc-200">${texto(formatarDataCurta(item.solicitante?.dataPagamento))}</dd>
                                 </div>
                                 <div>
-                                    <dt class="text-zinc-500">Ganho</dt>
-                                    <dd class="mt-1 font-semibold ${classeGanho}">${pagamentoRegistrado ? formatarMoeda(ganhoSolicitacao) : 'R$ 0,00'}</dd>
+                                    <dt class="text-zinc-500">Atualizado</dt>
+                                    <dd class="mt-1 font-semibold ${classeValorAtualizado(resumoJuros)}">${formatarMoeda(resumoJuros.valorAtualizado)}</dd>
                                 </div>
                             </div>
                         </dl>
@@ -724,8 +855,10 @@
         function htmlModalSolicitacao(item) {
             const statusAtual = normalizarStatus(item.status);
             const pagamentoRegistrado = Boolean(item.pagamento?.pago);
-            const valorEmprestado = numeroMoeda(item.solicitante?.valor);
+            const resumoJuros = calcularValorAtualizado(item);
+            const valorEmprestado = resumoJuros.valorEmprestado;
             const valorPago = numeroMoeda(item.pagamento?.valorPago);
+            const dataPagamentoInput = formatarDataInputPagamento(item.pagamento?.pagoEm);
             const ganhoSolicitacao = pagamentoRegistrado ? valorPago - valorEmprestado : 0;
             const classeGanho = ganhoSolicitacao >= 0 ? 'text-emerald-300' : 'text-red-300';
             const historico = obterHistoricoSolicitante(item);
@@ -848,27 +981,39 @@
                                     Pagamento do cliente
                                 </h3>
                                 <p class="text-sm ${pagamentoRegistrado ? 'text-emerald-300' : 'text-zinc-500'}">
-                                    ${pagamentoRegistrado ? `Pagamento registrado em ${formatarData(item.pagamento?.pagoEm)}` : 'Aguardando registro de pagamento'}
+                                    ${pagamentoRegistrado ? `Pagamento registrado em ${formatarDataPagamentoRegistrado(item.pagamento?.pagoEm)}` : 'Aguardando registro de pagamento'}
                                 </p>
                             </div>
 
-                            <div class="grid gap-3 sm:grid-cols-[minmax(180px,1fr)_auto_auto]">
-                                <input type="text" inputmode="decimal" data-payment-value value="${atributo(item.pagamento?.valorPago)}" placeholder="Quanto pagou" class="rounded-lg border border-zinc-800/80 bg-[#0a0a0a] px-3 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 outline-none transition-all focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50">
-                                <button type="button" data-action="payment" data-id="${atributo(item.id)}" class="inline-flex items-center justify-center gap-2 rounded-lg bg-[#10B981] px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#059669]">
+                            <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_minmax(155px,0.85fr)_auto_auto]">
+                                <label class="grid gap-1">
+                                    <span class="text-xs font-semibold text-zinc-500">Valor pago</span>
+                                    <input type="text" inputmode="decimal" data-payment-value value="${atributo(item.pagamento?.valorPago)}" placeholder="${atributo('Valor atualizado: ' + formatarMoeda(resumoJuros.valorAtualizado))}" class="rounded-lg border border-zinc-800/80 bg-[#0a0a0a] px-3 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 outline-none transition-all focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50">
+                                </label>
+                                <label class="grid gap-1">
+                                    <span class="text-xs font-semibold text-zinc-500">Data do pagamento</span>
+                                    <input type="date" data-payment-date value="${atributo(dataPagamentoInput)}" class="rounded-lg border border-zinc-800/80 bg-[#0a0a0a] px-3 py-2.5 text-sm text-zinc-200 outline-none transition-all focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50">
+                                </label>
+                                <button type="button" data-action="payment" data-id="${atributo(item.id)}" class="inline-flex items-center justify-center gap-2 self-end rounded-lg bg-[#10B981] px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#059669]">
                                     <i data-lucide="badge-dollar-sign" class="w-4 h-4"></i>
                                     Marcar pago
                                 </button>
-                                <button type="button" data-action="clear-payment" data-id="${atributo(item.id)}" class="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-700 px-3 py-2.5 text-sm font-semibold text-zinc-200 transition-colors hover:border-red-500/40 hover:text-white">
+                                <button type="button" data-action="clear-payment" data-id="${atributo(item.id)}" class="inline-flex items-center justify-center gap-2 self-end rounded-lg border border-zinc-700 px-3 py-2.5 text-sm font-semibold text-zinc-200 transition-colors hover:border-red-500/40 hover:text-white">
                                     <i data-lucide="x" class="w-4 h-4"></i>
                                     Limpar
                                 </button>
                             </div>
                         </div>
 
-                        <dl class="mt-5 grid gap-3 text-sm md:grid-cols-3">
+                        <dl class="mt-5 grid gap-3 text-sm md:grid-cols-4">
                             <div>
                                 <dt class="text-zinc-500">Valor emprestado</dt>
                                 <dd class="mt-1 font-semibold text-white">${formatarMoeda(valorEmprestado)}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-zinc-500">Valor atualizado</dt>
+                                <dd data-payment-updated class="mt-1 font-semibold ${classeValorAtualizado(resumoJuros)}">${formatarMoeda(resumoJuros.valorAtualizado)}</dd>
+                                <dd data-payment-interest-detail class="mt-1 text-xs text-zinc-500">${texto(textoDetalheJuros(resumoJuros))}</dd>
                             </div>
                             <div>
                                 <dt class="text-zinc-500">Valor pago</dt>
@@ -936,11 +1081,19 @@
         function registrarPagamento(id, botao) {
             const areaPagamento = botao.closest('[data-payment-scope]') || botao.closest('article');
             const campoPagamento = areaPagamento.querySelector('[data-payment-value]');
+            const campoDataPagamento = areaPagamento.querySelector('[data-payment-date]');
             const valorPago = campoPagamento.value.trim();
+            const dataPagamento = criarDataPagamentoManual(campoDataPagamento?.value);
 
             if (!valorPago || numeroMoeda(valorPago) <= 0) {
                 alert('Informe quanto o cliente pagou.');
                 campoPagamento.focus();
+                return;
+            }
+
+            if (!dataPagamento) {
+                alert('Informe a data em que o cliente pagou.');
+                campoDataPagamento?.focus();
                 return;
             }
 
@@ -951,7 +1104,7 @@
                     pagamento: {
                         pago: true,
                         valorPago,
-                        pagoEm: new Date().toISOString()
+                        pagoEm: dataPagamento.toISOString()
                     },
                     atualizadoEm: new Date().toISOString()
                 };
@@ -1053,6 +1206,8 @@
             if (action === 'delete') removerSolicitacao(id);
         });
 
+        listaEl.addEventListener('change', atualizarPreviaJurosPagamento);
+
         modalSolicitacaoEl.addEventListener('click', event => {
             if (event.target === modalSolicitacaoEl) {
                 fecharModalSolicitacao();
@@ -1073,6 +1228,8 @@
             if (action === 'clear-payment') limparPagamento(id);
             if (action === 'delete') removerSolicitacao(id);
         });
+
+        modalSolicitacaoEl.addEventListener('change', atualizarPreviaJurosPagamento);
 
         document.addEventListener('click', event => {
             if (event.target.closest('[data-status-menu]') || event.target.closest('[data-action="toggle-status"]')) {

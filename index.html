@@ -21,12 +21,52 @@
             backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.05);
         }
+
+        .process-card {
+            animation: step-in 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+            animation-delay: var(--delay);
+        }
+
+        .process-icon {
+            animation: icon-pulse 2.4s ease-in-out infinite;
+            animation-delay: var(--delay);
+        }
+
+        .process-line {
+            background-size: 200% 100%;
+            animation: line-flow 2.8s linear infinite;
+        }
+
+        @keyframes step-in {
+            from {
+                opacity: 0;
+                transform: translateY(18px) scale(0.98);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        @keyframes icon-pulse {
+            0%, 100% {
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.28);
+            }
+            50% {
+                box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+            }
+        }
+
+        @keyframes line-flow {
+            from { background-position: 0% 50%; }
+            to { background-position: 200% 50%; }
+        }
     </style>
 </head>
-<body class="bg-[#0a0a0a] text-zinc-100 min-h-screen flex flex-col items-center justify-center p-6 selection:bg-emerald-500/30">
+<body class="bg-[#0a0a0a] text-zinc-100 min-h-screen flex flex-col items-center p-6 selection:bg-emerald-500/30">
     <div class="fixed top-0 left-0 w-full h-full hero-gradient pointer-events-none z-0"></div>
 
-    <main class="max-w-3xl w-full text-center relative z-10">
+    <main class="max-w-5xl w-full text-center relative z-10 pt-16 md:pt-24">
         <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm font-medium mb-8">
             <i data-lucide="sparkles" class="w-4 h-4"></i>
             Crédito rápido e sem burocracia
@@ -46,6 +86,67 @@
                 <i data-lucide="arrow-right" class="ml-2 w-5 h-5 transition-transform group-hover:translate-x-1"></i>
             </a>
         </div>
+
+        <section class="mt-20 text-left" aria-label="Como funciona">
+            <div class="text-center max-w-2xl mx-auto mb-10">
+                <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-zinc-300 text-xs font-semibold uppercase tracking-[0.2em]">
+                    <i data-lucide="route" class="w-4 h-4 text-emerald-400"></i>
+                    Como funciona
+                </span>
+            </div>
+
+            <div class="relative">
+                <div class="hidden md:block absolute left-12 right-12 top-16 h-1 rounded-full bg-zinc-800 overflow-hidden">
+                    <div class="process-line h-full w-full bg-gradient-to-r from-emerald-500 via-cyan-400 to-emerald-500"></div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-5">
+                    <article class="process-card glass-card relative p-5 rounded-2xl" style="--delay: 0ms;">
+                        <div class="process-icon w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-5">
+                            <i data-lucide="clipboard-pen-line" class="w-6 h-6"></i>
+                        </div>
+                        <p class="text-xs font-bold text-emerald-400 mb-2">Etapa 01</p>
+                        <h3 class="text-lg font-bold text-white mb-2">Dados do solicitante</h3>
+                        <p class="text-sm text-zinc-500 leading-relaxed">
+                            O solicitante preenche as informações pessoais e os dados necessários para iniciar a análise.
+                        </p>
+                    </article>
+
+                    <article class="process-card glass-card relative p-5 rounded-2xl" style="--delay: 140ms;">
+                        <div class="process-icon w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-300 mb-5">
+                            <i data-lucide="contact-round" class="w-6 h-6"></i>
+                        </div>
+                        <p class="text-xs font-bold text-cyan-300 mb-2">Etapa 02</p>
+                        <h3 class="text-lg font-bold text-white mb-2">Contato de confiança</h3>
+                        <p class="text-sm text-zinc-500 leading-relaxed">
+                            Em seguida, ele informa os dados do contato de confiança que fará parte da solicitação.
+                        </p>
+                    </article>
+
+                    <article class="process-card glass-card relative p-5 rounded-2xl" style="--delay: 280ms;">
+                        <div class="process-icon w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-300 mb-5">
+                            <i data-lucide="triangle-alert" class="w-6 h-6"></i>
+                        </div>
+                        <p class="text-xs font-bold text-amber-300 mb-2">Etapa 03</p>
+                        <h3 class="text-lg font-bold text-white mb-2">Atenção ao compromisso</h3>
+                        <p class="text-sm text-zinc-500 leading-relaxed">
+                            Caso a parcela não seja paga, o contato de confiança não poderá solicitar um empréstimo no futuro.
+                        </p>
+                    </article>
+
+                    <article class="process-card glass-card relative p-5 rounded-2xl" style="--delay: 420ms;">
+                        <div class="process-icon w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-5">
+                            <i data-lucide="timer" class="w-6 h-6"></i>
+                        </div>
+                        <p class="text-xs font-bold text-emerald-400 mb-2">Etapa 04</p>
+                        <h3 class="text-lg font-bold text-white mb-2">Crédito liberado</h3>
+                        <p class="text-sm text-zinc-500 leading-relaxed">
+                            Após a aprovação, disponibilizamos o empréstimo em até 20 minutos.
+                        </p>
+                    </article>
+                </div>
+            </div>
+        </section>
 
         <div class="mt-24 grid grid-cols-1 md:grid-cols-3 gap-6">
             <div class="glass-card p-6 rounded-2xl text-left">
