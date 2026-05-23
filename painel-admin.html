@@ -5,6 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin | Microcredito Inteligente</title>
 
+    <script>
+        (() => {
+            try {
+                if (!localStorage.getItem('microcredito_admin_session')) {
+                    window.location.replace('login.html');
+                }
+            } catch {
+                window.location.replace('login.html');
+            }
+        })();
+    </script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -120,6 +132,10 @@
                 <button type="button" id="btn-recarregar" class="inline-flex items-center gap-2 rounded-xl bg-[#10B981] px-4 py-3 text-sm font-semibold text-white hover:bg-[#059669] transition-colors">
                     <i data-lucide="refresh-cw" class="w-4 h-4"></i>
                     Recarregar
+                </button>
+                <button type="button" id="btn-sair" class="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-[#121212] px-4 py-3 text-sm font-semibold text-zinc-200 hover:border-red-500/50 hover:text-white transition-colors">
+                    <i data-lucide="log-out" class="w-4 h-4"></i>
+                    Sair
                 </button>
             </div>
         </header>
@@ -254,6 +270,7 @@
     <script>
         lucide.createIcons();
 
+        const AUTH_KEY = 'microcredito_admin_session';
         const STORAGE_KEY = 'microcredito_solicitacoes';
         const FINANCEIRO_KEY = 'microcredito_financeiro';
         const TAXA_JUROS_FIXO = 0.12;
@@ -271,6 +288,7 @@
         const caixaEditModeEl = document.getElementById('caixa-edit-mode');
         const btnSalvarFinanceiroEl = document.getElementById('btn-salvar-financeiro');
         const btnEditarCaixaEl = document.getElementById('btn-editar-caixa');
+        const btnSairEl = document.getElementById('btn-sair');
         const modalSolicitacaoEl = document.getElementById('modal-solicitacao');
         const modalSolicitacaoConteudoEl = document.getElementById('modal-solicitacao-conteudo');
         const cardsMinimizados = new Set();
@@ -711,7 +729,7 @@
                                 <div class="flex justify-between gap-4"><dt class="text-zinc-500">Telefone</dt><dd class="text-right text-zinc-200">${texto(item.solicitante?.telefone)}</dd></div>
                                 <div class="flex justify-between gap-4"><dt class="text-zinc-500">Valor</dt><dd class="text-right font-semibold text-white">${texto(item.solicitante?.valor)}</dd></div>
                                 <div class="flex justify-between gap-4"><dt class="text-zinc-500">Chave PIX</dt><dd class="text-right text-zinc-200 break-all">${texto(item.solicitante?.pix)}</dd></div>
-                                <div class="flex justify-between gap-4"><dt class="text-zinc-500">Data de pagamento</dt><dd class="text-right text-zinc-200">${texto(formatarDataCurta(item.solicitante?.dataPagamento))}</dd></div>
+                                <div class="flex justify-between gap-4"><dt class="text-zinc-500">Data de vencimento</dt><dd class="text-right text-zinc-200">${texto(formatarDataCurta(item.solicitante?.dataPagamento))}</dd></div>
                             </dl>
                         </div>
 
@@ -955,7 +973,7 @@
                                 <div class="flex justify-between gap-4"><dt class="text-zinc-500">Telefone</dt><dd class="text-right text-zinc-200">${texto(item.solicitante?.telefone)}</dd></div>
                                 <div class="flex justify-between gap-4"><dt class="text-zinc-500">Valor</dt><dd class="text-right font-semibold text-white">${texto(item.solicitante?.valor)}</dd></div>
                                 <div class="flex justify-between gap-4"><dt class="text-zinc-500">Chave PIX</dt><dd class="text-right text-zinc-200 break-all">${texto(item.solicitante?.pix)}</dd></div>
-                                <div class="flex justify-between gap-4"><dt class="text-zinc-500">Data de pagamento</dt><dd class="text-right text-zinc-200">${texto(formatarDataCurta(item.solicitante?.dataPagamento))}</dd></div>
+                                <div class="flex justify-between gap-4"><dt class="text-zinc-500">Data de vencimento</dt><dd class="text-right text-zinc-200">${texto(formatarDataCurta(item.solicitante?.dataPagamento))}</dd></div>
                             </dl>
                         </section>
 
@@ -1261,6 +1279,10 @@
         document.getElementById('btn-recarregar').addEventListener('click', () => {
             renderizar();
             atualizarModalSolicitacaoAberta();
+        });
+        btnSairEl.addEventListener('click', () => {
+            localStorage.removeItem(AUTH_KEY);
+            window.location.href = 'login.html';
         });
 
         window.addEventListener('storage', event => {
